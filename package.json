@@ -1,0 +1,20 @@
+{
+  "name": "jarvis-clinicareduce",
+  "version": "1.0.0",
+  "main": "jarvis_clean.js",
+  "scripts": {
+    "start": "node jarvis_clean.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "body-parser": "^1.20.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
+    "googleapis": "^129.0.0",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.24.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  }
+}
