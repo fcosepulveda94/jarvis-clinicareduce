@@ -94,7 +94,7 @@ async function sendInstagramMessage(recipientId, messageText) {
   }
 
   // URL corregida: usa /me/messages y v24.0
-  const url = `https://graph.facebook.com/v24.0/me/messages?access_token=${IG_ACCESS_TOKEN}`;
+  const url = `https://graph.facebook.com/v24.0/${process.env.IG_BUSINESS_ACCOUNT_ID}/messages?access_token=${IG_ACCESS_TOKEN}`;
   
   const payload = {
     recipient: { id: recipientId },
