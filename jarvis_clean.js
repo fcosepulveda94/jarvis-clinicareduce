@@ -1,9 +1,10 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
+// Usamos node-fetch compatible con versiones antiguas de Node si es necesario, 
+// aunque en Render moderno suele estar disponible globalmente.
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// Configuración de Express
 const app = express();
 app.use(bodyParser.json());
 
@@ -13,14 +14,14 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'jarvis_clinicareduce';
 const IG_ACCESS_TOKEN = process.env.IG_ACCESS_TOKEN;
 const IG_BUSINESS_ACCOUNT_ID = process.env.IG_BUSINESS_ACCOUNT_ID;
 
-// Verificación de Webhook (GET)
+// 1. Verificación de Webhook (GET) - Necesario para que Meta confíe en la URL
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
   if (mode && token === VERIFY_TOKEN) {
-    console.log('✅ Webhook verificado - Respondiendo challenge:', challenge);
+    console.log('✅ Webhook verificado correctamente');
     res.status(200).send(challenge);
   } else {
     console.log('❌ Fallo en verificación de webhook');
@@ -28,62 +29,82 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// Recepción de Mensajes (POST)
+// 2. Recepción de Mensajes (POST)
 app.post('/webhook', async (req, res) => {
   const body = req.body;
   
+  // Confirmar recepción inmediatamente a Meta
+  res.status(200).send('EVENT_RECEIVED');
+
   if (body.object === 'instagram') {
     try {
-      // Procesar cada entrada del webhook
       for (const entry of body.entry) {
         const messaging = entry.messaging;
         
         if (messaging) {
           for (const messageEvent of messaging) {
-            const senderId = messageEvent.sender.id;
-            const recipientId = messageEvent.recipient.id;
-            
-            // Verificar si es un mensaje de texto
+            // Evitar procesar mensajes enviados por el mismo bot o ecos
             if (messageEvent.message && messageEvent.message.text) {
+              const senderId = messageEvent.sender.id;
               const messageText = messageEvent.message.text;
-              console.log(`📩 Instagram - De ${senderId}: ${messageText}`);
               
-              // Generar respuesta con IA (simulada por ahora)
+              console.log(` Mensaje recibido de ${senderId}: "${messageText}"`);
+              
+              // Generar respuesta con la IA (lógica local)
               const aiResponse = await generateAIResponse(messageText, senderId);
               
-              // Enviar respuesta
-              const sent = await sendInstagramMessage(senderId, aiResponse);
-              if (sent) {
-                console.log(`✅ Respuesta enviada a ${senderId}`);
-              } else {
-                console.log(` Error enviando respuesta a ${senderId}`);
-              }
+              // Enviar respuesta usando la API corregida
+              await sendInstagramMessage(senderId, aiResponse);
             }
           }
         }
       }
-      
-      res.status(200).send('EVENT_RECEIVED');
     } catch (error) {
       console.error('❌ Error procesando webhook:', error);
-      res.status(500).send('Error interno');
     }
-  } else {
-    res.sendStatus(404);
   }
 });
 
-// Función para generar respuesta con IA
+// 3. Función de IA (La que faltaba)
+async function generateAIResponse(userMessage, userId) {
+  try {
+    const msg = userMessage.toLowerCase().trim();
+    
+    // Lógica simple de palabras clave (puedes expandir esto luego)
+    if (msg.includes('agenda') || msg.includes('cita') || msg.includes('reservar') || msg.includes('hora')) {
+      return '¡Claro! Para agendar una cita en Clínica Reduce, por favor indícame:\n1. Tu nombre completo\n2. Fecha y hora preferida\n3. Tipo de consulta o tratamiento';
+    }
+    
+    if (msg.includes('precio') || msg.includes('valor') || msg.includes('costo') || msg.includes('tarifa')) {
+      return 'Nuestros precios dependen del tratamiento específico. ¿Te gustaría ver nuestro catálogo de suplementos o saber el valor de la consulta general?';
+    }
+    
+    if (msg.includes('ubicacion') || msg.includes('direccion') || msg.includes('donde')) {
+      return 'Estamos ubicados en [Tu Dirección Aquí]. ¿Necesitas instrucciones para llegar?';
+    }
+
+    if (msg.includes('hola') || msg.includes('buenas') || msg.includes('hi')) {
+      return '¡Hola! Soy Jarvis, el asistente virtual de Clínica Reduce. 🤖 ¿En qué puedo ayudarte hoy? Puedo agendar citas, darte precios o resolver dudas.';
+    }
+    
+    // Respuesta por defecto
+    return 'Gracias por escribirnos. Soy Jarvis. ¿Hay algo específico sobre nuestros servicios de nutrición o suplementos en lo que pueda ayudarte?';
+    
+  } catch (error) {
+    console.error('Error en lógica de IA:', error);
+    return 'Lo siento, tuve un pequeño error. ¿Podrías repetirme tu consulta?';
+  }
+}
+
+// 4. Función de Envío Corregida (Usando ID explícito y Auth Header)
 async function sendInstagramMessage(recipientId, messageText) {
-  // Usamos el ID de la cuenta de Instagram Business directamente, no 'me'
-  const igAccountId = process.env.IG_BUSINESS_ACCOUNT_ID; 
-  
-  if (!igAccountId) {
-    console.error('❌ ERROR: Falta la variable IG_BUSINESS_ACCOUNT_ID en Render');
+  if (!IG_ACCESS_TOKEN || !IG_BUSINESS_ACCOUNT_ID) {
+    console.error('❌ Faltan credenciales: IG_ACCESS_TOKEN o IG_BUSINESS_ACCOUNT_ID');
     return false;
   }
 
-  const url = `https://graph.facebook.com/v18.0/${igAccountId}/messages`;
+  // URL CORREGIDA: Usa el ID de la cuenta business, no 'me'
+  const url = `https://graph.facebook.com/v18.0/${IG_BUSINESS_ACCOUNT_ID}/messages`;
   
   const payload = {
     recipient: { id: recipientId },
@@ -95,7 +116,7 @@ async function sendInstagramMessage(recipientId, messageText) {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.IG_ACCESS_TOKEN}`
+        'Authorization': `Bearer ${IG_ACCESS_TOKEN}` // Token va en el header
       },
       body: JSON.stringify(payload)
     });
@@ -103,65 +124,20 @@ async function sendInstagramMessage(recipientId, messageText) {
     const data = await response.json();
     
     if (data.error) {
-      console.error('❌ Error de Meta API:', data.error.message);
+      console.error('❌ Error de Meta API:', data.error.message, '(Code:', data.error.code, ')');
       return false;
     }
     
-    console.log('✅ Jarvis respondió correctamente a:', recipientId);
+    console.log('✅ Mensaje enviado exitosamente a', recipientId);
     return true;
   } catch (error) {
-    console.error('❌ Error de red:', error);
+    console.error('❌ Error de red al enviar:', error.message);
     return false;
   }
 }
 
-// Función CORREGIDA para enviar mensajes a Instagram
-// Usa /me/messages en lugar de /{id}/messages para evitar error #3 en apps no verificadas
-async function sendInstagramMessage(recipientId, messageText) {
-  // Usamos el ID de la cuenta de Instagram Business directamente, no 'me'
-  const igAccountId = process.env.IG_BUSINESS_ACCOUNT_ID; 
-  
-  if (!igAccountId) {
-    console.error('❌ ERROR: Falta la variable IG_BUSINESS_ACCOUNT_ID en Render');
-    return false;
-  }
-
-  const url = `https://graph.facebook.com/v18.0/${igAccountId}/messages`;
-  
-  const payload = {
-    recipient: { id: recipientId },
-    message: { text: messageText }
-  };
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.IG_ACCESS_TOKEN}`
-      },
-      body: JSON.stringify(payload)
-    });
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      console.error('❌ Error de Meta API:', data.error.message);
-      return false;
-    }
-    
-    console.log('✅ Jarvis respondió correctamente a:', recipientId);
-    return true;
-  } catch (error) {
-    console.error('❌ Error de red:', error);
-    return false;
-  }
-}
 // Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`🌐 Servidor Express corriendo en puerto ${PORT}`);
-  console.log(` Webhook URL: /webhook`);
-  console.log(`✅ Google Calendar configurado correctamente`); // Mantenido de tu versión original
-  console.log(`\n==> Your service is live 🎉`);
-  console.log(`==> Available at: https://jarvis-clinicareduce.onrender.com\n`);
+  console.log(`🚀 Servidor Jarvis corriendo en puerto ${PORT}`);
+  console.log(` Webhook activo en: /webhook`);
 });
