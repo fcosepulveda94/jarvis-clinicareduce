@@ -74,27 +74,16 @@ app.post('/webhook', async (req, res) => {
 });
 
 // Función para generar respuesta con IA
-async function generateAIResponse(userMessage, userId) {
-  try {
-    // Aquí iría la llamada a tu API de IA (OpenAI, etc.)
-    // Por ahora, una respuesta básica personalizada
-    return `¡Hola! Soy Jarvis de Clínica Reduce. He recibido tu mensaje: "${userMessage}". ¿En qué puedo ayudarte hoy?`;
-  } catch (error) {
-    console.error('❌ Error en IA:', error);
-    return 'Lo siento, tuve un error procesando tu solicitud. Por favor intenta nuevamente.';
-  }
-}
-
-// Función CORREGIDA para enviar mensajes a Instagram
-// Usa /me/messages en lugar de /{id}/messages para evitar error #3 en apps no verificadas
 async function sendInstagramMessage(recipientId, messageText) {
-  if (!IG_ACCESS_TOKEN) {
-    console.error('❌ ERROR CRÍTICO: IG_ACCESS_TOKEN no está definido en las variables de entorno');
+  // Usamos el ID de la cuenta de Instagram Business directamente, no 'me'
+  const igAccountId = process.env.IG_BUSINESS_ACCOUNT_ID; 
+  
+  if (!igAccountId) {
+    console.error('❌ ERROR: Falta la variable IG_BUSINESS_ACCOUNT_ID en Render');
     return false;
   }
 
-  // URL corregida: usa /me/messages y v24.0
-  const url = `https://graph.facebook.com/v24.0/${process.env.IG_BUSINESS_ACCOUNT_ID}/messages?access_token=${IG_ACCESS_TOKEN}`;
+  const url = `https://graph.facebook.com/v18.0/${igAccountId}/messages`;
   
   const payload = {
     recipient: { id: recipientId },
@@ -102,12 +91,11 @@ async function sendInstagramMessage(recipientId, messageText) {
   };
 
   try {
-    console.log(`📤 Enviando mensaje a ${recipientId}...`);
-    
     const response = await fetch(url, {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json' 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.IG_ACCESS_TOKEN}`
       },
       body: JSON.stringify(payload)
     });
@@ -115,23 +103,60 @@ async function sendInstagramMessage(recipientId, messageText) {
     const data = await response.json();
     
     if (data.error) {
-      console.error('❌ Error de Meta API:', {
-        message: data.error.message,
-        type: data.error.type,
-        code: data.error.code,
-        fbtrace_id: data.error.fbtrace_id
-      });
+      console.error('❌ Error de Meta API:', data.error.message);
       return false;
     }
     
-    console.log('✅ Mensaje enviado exitosamente. ID:', data.message_id);
+    console.log('✅ Jarvis respondió correctamente a:', recipientId);
     return true;
   } catch (error) {
-    console.error('❌ Error de red al enviar mensaje:', error.message);
+    console.error('❌ Error de red:', error);
     return false;
   }
 }
 
+// Función CORREGIDA para enviar mensajes a Instagram
+// Usa /me/messages en lugar de /{id}/messages para evitar error #3 en apps no verificadas
+async function sendInstagramMessage(recipientId, messageText) {
+  // Usamos el ID de la cuenta de Instagram Business directamente, no 'me'
+  const igAccountId = process.env.IG_BUSINESS_ACCOUNT_ID; 
+  
+  if (!igAccountId) {
+    console.error('❌ ERROR: Falta la variable IG_BUSINESS_ACCOUNT_ID en Render');
+    return false;
+  }
+
+  const url = `https://graph.facebook.com/v18.0/${igAccountId}/messages`;
+  
+  const payload = {
+    recipient: { id: recipientId },
+    message: { text: messageText }
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.IG_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      console.error('❌ Error de Meta API:', data.error.message);
+      return false;
+    }
+    
+    console.log('✅ Jarvis respondió correctamente a:', recipientId);
+    return true;
+  } catch (error) {
+    console.error('❌ Error de red:', error);
+    return false;
+  }
+}
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`🌐 Servidor Express corriendo en puerto ${PORT}`);
